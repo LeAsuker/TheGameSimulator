@@ -4,24 +4,14 @@
 # a smaller number than the one currently on top, and for the latter
 # the reverse applies.
 
-# Over 10 clause.
-
-"""
-Now how to go about it - let us create classes for everything.
-Field class that includes the deck we will be playing on.
-CardStack class that will go from one number to another and will include a list.
-Deck class that will include cards
-Player class that will include an AI and the cards it will have in its hand.
-
-
-"""
+# Over 10 clause - one can also add a card that is 10 points 'in reverse' to a stack. This
+# is a necessary mechanic that greatly increases the win rate.
 
 import math
 import random
 
 DOWN = 0
 UP = 1
-
 
 def valid_play_up(card: int, card_stack: "CardStack") -> bool:
     return card > card_stack.peek() or card == card_stack.peek() - 10
