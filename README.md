@@ -7,3 +7,7 @@ What I have found is that, assuming simplistic but good local play and no long-t
 Some of the rules are a bit simplified, as is the AI, but I intend to improve it when I have time. The simulator itself is very modular and can easily be edited to make the game more complicated, or to actually make it playable with real people.
 
 A future plan of mine would be to make the game more engaging, add PVP elements, and port it to pygame with multiplayer.
+
+Tools used:
+  - mypy
+  - ruff
