@@ -13,3 +13,8 @@ A future plan of mine would be to make the game more engaging, add PVP elements,
 Tools used:
   - mypy
   - ruff
+
+TODO:
+  - Refactor object ID system
+  - Move functions into local scopes
+  - Add more statistics
