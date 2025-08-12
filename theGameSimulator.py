@@ -13,12 +13,23 @@ import random
 DOWN = 0
 UP = 1
 
-def valid_play_up(card: int, card_stack: "CardStack") -> bool:
-    return card > card_stack.peek() or card == card_stack.peek() - 10
+# Config
+KEEP_PLAYING_THRESHOLD = -10  # How big of a diff to keep playing cards?
+GAME_AMOUNT = 1000  # How many games to simulate
+DEBUG_INFO = False
 
 
-def valid_play_down(card: int, card_stack: "CardStack") -> bool:
+def valid_play(card: int, card_stack: "CardStack", direction: int) -> bool:
+    if direction == UP:
+        return card > card_stack.peek() or card == card_stack.peek() - 10
     return card < card_stack.peek() or card == card_stack.peek() + 10
+
+
+def best_play_helper(curr_player: "Player", field: "Field") -> tuple[int, "CardStack"]:
+    best_play = curr_player.best_option(playing_field)
+    card, stack_id = best_play
+    card_stack = playing_field.get_stack_from_id(stack_id)
+    return card, card_stack
 
 
 class Deck:
@@ -48,7 +59,11 @@ class Player:
 
         for _ in range(amount):
             if len(deck.cards) == 0:
+                if DEBUG_INFO:
+                    print("Player", self.id, "Deck empty, no draw!")
                 break
+            if DEBUG_INFO:
+                print("Player", self.id, "drew card", deck.cards[-1])
             self.hand.add(deck.cards.pop())
 
         if len(deck.cards) == 0:
@@ -58,25 +73,29 @@ class Player:
 
     def play_card(self, card: int, target: "CardStack") -> None:
         assert card in self.hand
+        if DEBUG_INFO:
+            print("Player", self.id, "Played card", card, "to stack", target.id)
 
         if target.direction == DOWN:
-            assert valid_play_down(card, target)
+            assert valid_play(card, target, DOWN)
             target.cards.append(card)
         elif target.direction == UP:
-            assert valid_play_up(card, target)
+            assert valid_play(card, target, UP)
             target.cards.append(card)
 
         self.hand.remove(card)
 
+    # This gets all legal moves
     def calc_options(self, field: "Field") -> int:
+        self.options = set()
         possibilities = 0
         for card in self.hand:
             for card_stack in field.card_stacks_down:
-                if valid_play_down(card, card_stack):
+                if valid_play(card, card_stack, DOWN):
                     self.options.add((card, card_stack.id))
                     possibilities += 1
             for card_stack in field.card_stacks_up:
-                if valid_play_up(card, card_stack):
+                if valid_play(card, card_stack, UP):
                     self.options.add((card, card_stack.id))
                     possibilities += 1
         return possibilities
@@ -158,6 +177,12 @@ class Field:
         else:
             return card_stack.peek() - card
 
+    def no_id_stack_score_distance(self, option: tuple[int, "CardStack"]) -> int:
+        if card_stack.direction == UP:
+            return card - card_stack.peek()
+        else:
+            return card_stack.peek() - card
+
     def all_hands_empty(self) -> bool:
         for player in self.players:
             if not player.empty_hand():
@@ -169,13 +194,19 @@ class Field:
         self.curr_player_id %= playing_field.player_number
 
     def print_state(self) -> None:
+        print("== Final State ==")
         for stack in self.card_stacks_up:
             print("UP Stack", stack.id, "top:", stack.peek())
+            print(stack.cards)
         for stack in self.card_stacks_down:
             print("DOWN Stack", stack.id, "top:", stack.peek())
+            print(stack.cards)
         for player in self.players:
             print("Player", player.id, "hand:", player.hand)
+        print(len(self.deck.cards), " cards left in deck")
+        print(self.deck.cards)
         print("=========")
+        return None
 
     def get_stack_from_id(self, stack_id: int) -> CardStack:
         if stack_id >= playing_field.stack_amount:
@@ -183,40 +214,97 @@ class Field:
         else:
             return playing_field.card_stacks_up[stack_id]
 
+    def card_amount_check(self) -> bool:
+        card_amount = 0
+        for stack in self.card_stacks_up:
+            card_amount += len(stack.cards)
+        for stack in self.card_stacks_down:
+            card_amount += len(stack.cards)
 
-# Used to track statistics
+        card_amount += len(self.deck.cards)
+        for player in self.players:
+            card_amount += len(player.hand)
+
+        return card_amount == 98
+
+    def player_hand_check(self) -> bool:
+        for player in self.players:
+            if len(player.hand) > 6:
+                return False
+
+        if self.deck.empty:
+            return True
+
+        for player in self.players:
+            if len(player.hand) not in [0, 6]:
+                return False
+
+        return True
+
+
 Losses = 0
 Wins = 0
+Option_numerator = 0
+Option_denominator = 0
 
-for game in range(1000):
-    # while Wins == 0:
+for game in range(GAME_AMOUNT):
     playing_field = Field(Deck(2, 99), 4, 2, 1, 100)
     playing_field.first_draw(6)
     curr_player = playing_field.players[playing_field.curr_player_id]
 
     # each while True loop is a game of The Game
     loss_flag = False
+    min_card_play = 2
     while True:
+        if playing_field.deck.empty:
+            min_card_play = 1
+
         curr_player = playing_field.players[playing_field.curr_player_id]
-        for _ in range(2):
+        # First minimum amount of cards is played
+        for _ in range(min_card_play):
+            if curr_player.empty_hand():
+                break
+
             possible_moves = curr_player.calc_options(playing_field)
-            if possible_moves == 0 and not curr_player.empty_hand():
+
+            Option_numerator += possible_moves  # Not skewed due to empty hands
+            Option_denominator += 1
+
+            # We know hand is not empty
+            if possible_moves == 0:
                 loss_flag = True
                 break
-            # empty hand
-            elif possible_moves == 0:
-                break
 
-            best_play = curr_player.best_option(playing_field)
-            card, stack_id = best_play
-
-            card_stack = playing_field.get_stack_from_id(stack_id)
+            card, card_stack = best_play_helper(curr_player, playing_field)
 
             curr_player.play_card(card, card_stack)
             assert card_stack.peek() == card
-            curr_player.options = set()
 
-            print("played card", card, "to stack", stack_id)
+        # This is disgusting, I know
+        # if there is a play
+        extra_draw = 0
+        if curr_player.calc_options(playing_field) != 0:
+            # find best play
+            best_play = best_play_helper(curr_player, playing_field)
+            diff = playing_field.no_id_stack_score_distance(best_play)
+            card, card_stack = best_play
+            # while best play is good enough
+            while diff <= KEEP_PLAYING_THRESHOLD:
+                # play it
+                curr_player.play_card(card, card_stack)
+                extra_draw += 1
+                # if no play leave
+                if curr_player.calc_options(playing_field) == 0:
+                    break
+
+                card, card_stack = best_play_helper(curr_player, playing_field)
+                diff = playing_field.no_id_stack_score_distance((card, card_stack))
+
+        curr_player.draw(playing_field.deck, min_card_play + extra_draw)
+        if not loss_flag:
+            # why is print_state() not returning anything a problem according to mypy
+            assert playing_field.card_amount_check(), playing_field.print_state()  # type: ignore
+            assert playing_field.player_hand_check(), playing_field.print_state()  # type: ignore
 
         if loss_flag:
             print("LOSS")
@@ -230,9 +318,14 @@ for game in range(1000):
             Wins += 1
             break
 
-        curr_player.draw(playing_field.deck, 2)
         playing_field.next_turn()
 
 
 print("Wins: ", Wins)
 print("Losses: ", Losses)
+print("Winrate of", (Wins / GAME_AMOUNT) * 100, "%")
+print(
+    "Players had an average of",
+    round(Option_numerator / Option_denominator, 2),
+    "options each turn",
+)
